@@ -32,7 +32,7 @@ int main(int argc, char** argv)
     }
 
     // Declare and initialize data
-    const int n = 256*1024*1024;
+    const int n = 64*1024*1024;
     const int nAlloc = ((n+16-1)/16)*16; // padd to longest vector size
     std::vector<float> src(nAlloc, 0.0f);
     std::vector<float> dst(nAlloc, 0.0f);
@@ -79,24 +79,6 @@ int main(int argc, char** argv)
     tuner.addConstraint(kernelId, {"UNBOUNDED_WG", "USE_ATOMICS"}, persistentAtomic);
     auto unboundedWG = [](const std::vector<size_t>& v) {return (!v[0] || v[1] >= 32);};
     tuner.addConstraint(kernelId, {"UNBOUNDED_WG", "WORK_GROUP_SIZE_X"}, unboundedWG);
-
-
-	/*tuner.addParameter(kernelId, "WORK_GROUP_SIZE_X", { 256 });
-	tuner.setThreadModifier(kernelId, ktt::ModifierType::Local, ktt::ModifierDimension::X, "WORK_GROUP_SIZE_X", ktt::ModifierAction::Multiply);
-	tuner.addParameter(kernelId, "UNBOUNDED_WG", { 0});
-	tuner.addParameter(kernelId, "WG_NUM", { 32 });
-	tuner.addParameter(kernelId, "VECTOR_SIZE", { 8 });
-	tuner.setThreadModifier(kernelId, ktt::ModifierType::Global, ktt::ModifierDimension::X, "VECTOR_SIZE", ktt::ModifierAction::Divide);
-	tuner.addParameter(kernelId, "USE_ATOMICS", { 1 });
-
-	auto persistConstraint = [](const std::vector<size_t>& v) {return (v[0] && v[1] == 0) || (!v[0] && v[1] > 0); };
-	tuner.addConstraint(kernelId, { "UNBOUNDED_WG", "WG_NUM" }, persistConstraint);
-	auto persistentAtomic = [](const std::vector<size_t>& v) {return (v[0] == 1) || (v[0] == 0 && v[1] == 1); };
-	tuner.addConstraint(kernelId, { "UNBOUNDED_WG", "USE_ATOMICS" }, persistentAtomic);
-	auto unboundedWG = [](const std::vector<size_t>& v) {return (!v[0] || v[1] >= 32); };
-	tuner.addConstraint(kernelId, { "UNBOUNDED_WG", "WORK_GROUP_SIZE_X" }, unboundedWG);
-*/
-
 
     tuner.setReferenceClass(kernelId, std::make_unique<ReferenceReduction>(src, dstId), std::vector<ktt::ArgumentId>{dstId});
     tuner.setValidationMethod(ktt::ValidationMethod::SideBySideComparison, (double)n*10000.0/10'000'000.0);
