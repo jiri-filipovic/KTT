@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <utility/ktt_utility.h>
 #include <utility/result_printer.h>
 
 namespace ktt
 {
 
 ResultPrinter::ResultPrinter() :
-    timeUnit(TimeUnit::Microseconds),
+    timeUnit(TimeUnit::Milliseconds),
     printInvalidResult(false)
 {}
 
@@ -147,6 +148,50 @@ void ResultPrinter::printCSV(const std::vector<KernelResult>& results, std::ostr
             outputTarget << ",";
         }
     }
+
+    if (results.at(0).getProfilingData().isValid())
+    {
+        const std::vector<KernelProfilingCounter>& counters = results.at(0).getProfilingData().getAllCounters();
+        if (counters.size() > 0)
+        {
+            outputTarget << ",";
+        }
+
+        for (size_t i = 0; i < counters.size(); ++i)
+        {
+            outputTarget << counters.at(i).getName();
+            if (i + 1 != counters.size())
+            {
+                outputTarget << ",";
+            }
+        }
+    }
+    else if (!results.at(0).getCompositionProfilingData().empty())
+    {
+        for (const auto& pair : results.at(0).getCompositionProfilingData())
+        {
+            if (!pair.second.isValid())
+            {
+                continue;
+            }
+
+            const std::vector<KernelProfilingCounter>& counters = pair.second.getAllCounters();
+            if (counters.size() > 0)
+            {
+                outputTarget << ",";
+            }
+
+            for (size_t i = 0; i < counters.size(); ++i)
+            {
+                outputTarget << counters.at(i).getName() << " " << pair.first;
+                if (i + 1 != counters.size())
+                {
+                    outputTarget << ",";
+                }
+            }
+        }
+    }
+
     outputTarget << std::endl;
 
     // Values
@@ -160,6 +205,23 @@ void ResultPrinter::printCSV(const std::vector<KernelResult>& results, std::ostr
         outputTarget << result.getKernelName() << ",";
         outputTarget << convertTime(result.getComputationDuration(), timeUnit) << ",";
         printConfigurationCSV(outputTarget, result.getConfiguration(), parameterPairs);
+        if (result.getProfilingData().isValid())
+        {
+            printProfilingCountersCSV(outputTarget, result.getProfilingData().getAllCounters());
+        }
+        else if (!result.getCompositionProfilingData().empty())
+        {
+            for (const auto& pair : result.getCompositionProfilingData())
+            {
+                if (!pair.second.isValid())
+                {
+                    continue;
+                }
+
+                printProfilingCountersCSV(outputTarget, pair.second.getAllCounters());
+            }
+        }
+        outputTarget << std::endl;
     }
 
     if (printInvalidResult)
@@ -195,6 +257,50 @@ void ResultPrinter::printCSV(const std::vector<KernelResult>& results, std::ostr
                 outputTarget << ",";
             }
         }
+
+        if (results.at(0).getProfilingData().isValid())
+        {
+            const std::vector<KernelProfilingCounter>& counters = results.at(0).getProfilingData().getAllCounters();
+            if (counters.size() > 0)
+            {
+                outputTarget << ",";
+            }
+
+            for (size_t i = 0; i < counters.size(); ++i)
+            {
+                outputTarget << counters.at(i).getName();
+                if (i + 1 != counters.size())
+                {
+                    outputTarget << ",";
+                }
+            }
+        }
+        else if (!results.at(0).getCompositionProfilingData().empty())
+        {
+            for (const auto& pair : results.at(0).getCompositionProfilingData())
+            {
+                if (!pair.second.isValid())
+                {
+                    continue;
+                }
+
+                const std::vector<KernelProfilingCounter>& counters = pair.second.getAllCounters();
+                if (counters.size() > 0)
+                {
+                    outputTarget << ",";
+                }
+
+                for (size_t i = 0; i < counters.size(); ++i)
+                {
+                    outputTarget << counters.at(i).getName() << " " << pair.first;
+                    if (i + 1 != counters.size())
+                    {
+                        outputTarget << ",";
+                    }
+                }
+            }
+        }
+
         outputTarget << std::endl;
 
         // Values
@@ -217,6 +323,23 @@ void ResultPrinter::printCSV(const std::vector<KernelResult>& results, std::ostr
 
             outputTarget << statusMessage << ",";
             printConfigurationCSV(outputTarget, result.getConfiguration(), parameterPairs);
+            if (result.getProfilingData().isValid())
+            {
+                printProfilingCountersCSV(outputTarget, result.getProfilingData().getAllCounters());
+            }
+            else if (!result.getCompositionProfilingData().empty())
+            {
+                for (const auto& pair : result.getCompositionProfilingData())
+                {
+                    if (!pair.second.isValid())
+                    {
+                        continue;
+                    }
+
+                    printProfilingCountersCSV(outputTarget, pair.second.getAllCounters());
+                }
+            }
+            outputTarget << std::endl;
         }
     }
 }
@@ -310,7 +433,47 @@ void ResultPrinter::printConfigurationCSV(std::ostream& outputTarget, const Kern
             outputTarget << ",";
         }
     }
-    outputTarget << std::endl;
+}
+
+void ResultPrinter::printProfilingCountersCSV(std::ostream& outputTarget, const std::vector<KernelProfilingCounter>& counters) const
+{
+    if (counters.size() > 0)
+    {
+        outputTarget << ",";
+    }
+
+    for (size_t i = 0; i < counters.size(); ++i)
+    {
+        const KernelProfilingCounter& counter = counters.at(i);
+        switch (counter.getType())
+        {
+        case ProfilingCounterType::Double:
+            outputTarget << counter.getValue().doubleValue;
+            break;
+        case ProfilingCounterType::Int:
+            outputTarget << counter.getValue().intValue;
+            break;
+        case ProfilingCounterType::UnsignedInt:
+            outputTarget << counter.getValue().uintValue;
+            break;
+        case ProfilingCounterType::Percent:
+            outputTarget << counter.getValue().percentValue;
+            break;
+        case ProfilingCounterType::Throughput:
+            outputTarget << counter.getValue().throughputValue;
+            break;
+        case ProfilingCounterType::UtilizationLevel:
+            outputTarget << counter.getValue().utilizationLevelValue;
+            break;
+        default:
+            throw std::runtime_error("Unknown profiling counter type");
+        }
+
+        if (i + 1 != counters.size())
+        {
+            outputTarget << ",";
+        }
+    }
 }
 
 KernelResult ResultPrinter::getBestResult(const std::vector<KernelResult>& results) const
@@ -327,40 +490,6 @@ KernelResult ResultPrinter::getBestResult(const std::vector<KernelResult>& resul
     }
 
     return bestResult;
-}
-
-uint64_t ResultPrinter::convertTime(const uint64_t timeInNanoseconds, const TimeUnit targetUnit)
-{
-    switch (targetUnit)
-    {
-    case TimeUnit::Nanoseconds:
-        return timeInNanoseconds;
-    case TimeUnit::Microseconds:
-        return timeInNanoseconds / 1'000;
-    case TimeUnit::Milliseconds:
-        return timeInNanoseconds / 1'000'000;
-    case TimeUnit::Seconds:
-        return timeInNanoseconds / 1'000'000'000;
-    default:
-        throw std::runtime_error("Unknown time unit");
-    }
-}
-
-std::string ResultPrinter::getTimeUnitTag(const TimeUnit unit)
-{
-    switch (unit)
-    {
-    case TimeUnit::Nanoseconds:
-        return std::string("ns");
-    case TimeUnit::Microseconds:
-        return std::string("us");
-    case TimeUnit::Milliseconds:
-        return std::string("ms");
-    case TimeUnit::Seconds:
-        return std::string("s");
-    default:
-        throw std::runtime_error("Unknown time unit");
-    }
 }
 
 } // namespace ktt

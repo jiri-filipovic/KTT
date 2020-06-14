@@ -57,7 +57,7 @@ end
 
 function findLibrariesNvidia()
     local path = os.getenv("CUDA_PATH")
-    
+    --path = "/usr/local/cuda-10.1"    
     if not path then
         return false
     end
@@ -113,25 +113,22 @@ function findVulkan()
         return false
     end
     
-    includedirs { "$(VULKAN_SDK)/Include", "libraries/include" }
-    
     if os.target() == "linux" then
-        filter "configurations:Release"
-            libdirs { "$(VULKAN_SDK)/Lib", "libraries/lib/linux/release" }
-        filter "configurations:Debug"
-            libdirs { "$(VULKAN_SDK)/Lib", "libraries/lib/linux/debug" }
+        includedirs { "$(VULKAN_SDK)/include", "libraries/include" }
+        libdirs { "$(VULKAN_SDK)/lib", "libraries/lib/linux" }
     else
-        filter "configurations:Release"
-            libdirs { "$(VULKAN_SDK)/Lib", "libraries/lib/windows/release" }
-        filter "configurations:Debug"
-            libdirs { "$(VULKAN_SDK)/Lib", "libraries/lib/windows/debug" }
+        includedirs { "$(VULKAN_SDK)/Include", "libraries/include" }
+        libdirs { "$(VULKAN_SDK)/Lib", "libraries/lib/windows" }
     end
-    
-    filter {}
     
     vulkan_projects = true
     defines { "KTT_PLATFORM_VULKAN" }
-    links { "vulkan-1", "glslang", "SPIRV", "SPIRV-Tools", "HLSL", "OSDependent", "OGLCompiler", "SPVRemapper", "SPIRV-Tools-opt" }
+    
+    if os.target() == "linux" then
+        links { "vulkan", "shaderc_shared" }
+    else
+        links { "vulkan-1", "shaderc_shared" }
+    end
     
     return true
 end
@@ -230,7 +227,7 @@ workspace "ktt"
     
     targetdir(buildPath .. "/%{cfg.platform}_%{cfg.buildcfg}")
     objdir(buildPath .. "/%{cfg.platform}_%{cfg.buildcfg}/obj")
-
+    
 -- Library configuration
 project "ktt"
     kind "SharedLib"
@@ -261,13 +258,7 @@ project "ktt"
         vulkan = findVulkan()
         
         if not vulkan then
-            error("Vulkan SDK was not found")
-        end
-        
-        if os.target() == "linux" then
-            zip.extract("libraries/lib/linux.tar.gz", "libraries/lib/linux")
-        else
-            zip.extract("libraries/lib/windows.zip", "libraries/lib/windows")
+            error("Vulkan SDK was not found. Please ensure that path to the SDK is correctly set in the environment variables under VULKAN_SDK.")
         end
     end
     
@@ -323,6 +314,12 @@ project "conv_3d"
     includedirs { "source" }
     links { "ktt" }
 
+project "covariance_opencl"
+    kind "ConsoleApp"
+    files { "examples/covariance/*.cpp", "examples/covariance/*.cl" }
+    includedirs { "source" }
+    links { "ktt" }
+
 project "reduction_opencl"
     kind "ConsoleApp"
     files { "examples/reduction/*.h", "examples/reduction/*.cpp", "examples/reduction/*.cl" }
@@ -360,6 +357,12 @@ project "gemm_batch_openclcuda"
 project "gemm_demo_openclcuda"
     kind "ConsoleApp"
     files { "examples/gemm_batch/*.h", "examples/gemm_batch/demo.cpp", "examples/gemm_batch/*.cl", "examples/gemm_batch/*.cu" }
+    includedirs { "source" }
+    links { "ktt" }
+
+project "sort-new"
+    kind "ConsoleApp"
+    files {"examples/sort-new/*.h", "examples/sort-new/*.cpp", "examples/sort-new/*.cu"}
     includedirs { "source" }
     links { "ktt" }
 end -- cuda_projects
@@ -427,7 +430,20 @@ project "00_info_vulkan"
     files { "tutorials/00_compute_api_info/compute_api_info_vulkan.cpp" }
     includedirs { "source" }
     links { "ktt" }
-end -- cuda_projects
+    
+project "01_running_kernel_vulkan"
+    kind "ConsoleApp"
+    files { "tutorials/01_running_kernel/running_kernel_vulkan.cpp", "tutorials/01_running_kernel/vulkan_kernel.glsl" }
+    includedirs { "source" }
+    links { "ktt" }
+    
+project "02_tuning_kernel_simple_vulkan"
+    kind "ConsoleApp"
+    files { "tutorials/02_tuning_kernel_simple/tuning_kernel_simple_vulkan.cpp", "tutorials/02_tuning_kernel_simple/vulkan_kernel.glsl" }
+    includedirs { "source" }
+    links { "ktt" }
+    
+end -- vulkan_projects
 
 end -- _OPTIONS["no-tutorials"]
 

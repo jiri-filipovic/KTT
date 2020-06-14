@@ -19,6 +19,10 @@ enum class SearchMethod
       */
     RandomSearch,
 
+	/** Explores kernel configurations using proposed Deep Learning network. Additional parameter specifies Hardware and Architecture model.
+	*/
+	DLNezarat,
+
     /** Explores kernel configurations using simulated annealing method. Additional parameter specifies maximum temperature.
       */
     Annealing,

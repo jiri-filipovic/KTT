@@ -16,19 +16,20 @@ public:
         metricId(0),
         metricName(""),
         device(0),
-        currentSet(nullptr),
-        currentEventIndex(0),
+        eventGroupSets(nullptr),
+        currentSetIndex(0),
         eventCount(0)
     {}
 
     CUpti_MetricID metricId;
     std::string metricName;
     CUdevice device;
-    CUpti_EventGroupSet* currentSet;
-    uint32_t currentEventIndex;
+    CUpti_EventGroupSets* eventGroupSets;
+    uint32_t currentSetIndex;
     uint32_t eventCount;
     std::vector<CUpti_EventID> eventIds;
     std::vector<uint64_t> eventValues;
+    std::vector<bool> eventStatuses;
 };
 
 } // namespace ktt

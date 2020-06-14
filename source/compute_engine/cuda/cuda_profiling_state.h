@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include <string>
 #include <vector>
@@ -14,12 +15,13 @@ namespace ktt
 class CUDAProfilingState
 {
 public:
-    explicit CUDAProfilingState(CUcontext context, const CUdevice device, const std::vector<std::pair<std::string, CUpti_MetricID>>& metrics) :
+    explicit CUDAProfilingState(CUcontext context, const CUdevice device, std::vector<std::pair<std::string, CUpti_MetricID>>& metrics) :
         kernelDuration(std::numeric_limits<uint64_t>::max()),
         kernelDurationValid(false),
-        eventGroups(nullptr),
-        remainingKernelRuns(0),
-        totalKernelRuns(0)
+        remainingKernelRuns(1),
+        totalKernelRuns(1),
+        eventGroupSets(nullptr),
+        currentSetIndex(0)
     {
         std::vector<CUpti_MetricID> metricIds;
         for (const auto& metric : metrics)
@@ -27,30 +29,39 @@ public:
             metricIds.push_back(metric.second);
         }
 
-        checkCUDAError(cuptiMetricCreateEventGroupSets(context, metricIds.size(), metricIds.data(), &eventGroups),
+        checkCUDAError(cuptiMetricCreateEventGroupSets(context, sizeof(CUpti_MetricID) * metricIds.size(), metricIds.data(), &eventGroupSets),
             "cuptiMetricCreateEventGroupSets");
-        totalKernelRuns = eventGroups->numSets + 1;
-        remainingKernelRuns = eventGroups->numSets + 1;
+        totalKernelRuns += static_cast<uint64_t>(eventGroupSets->numSets);
+        remainingKernelRuns += static_cast<uint64_t>(eventGroupSets->numSets);
 
-        for (const auto& metric : metrics)
+        for (auto& metric : metrics)
         {
             CUDAProfilingMetric profilingMetric;
             profilingMetric.metricId = metric.second;
             profilingMetric.metricName = metric.first;
             profilingMetric.device = device;
-            profilingMetric.currentSet = &eventGroups->sets[0];
+            profilingMetric.eventGroupSets = eventGroupSets;
             checkCUDAError(cuptiMetricGetNumEvents(metric.second, &profilingMetric.eventCount), "cuptiMetricGetNumEvents");
             profilingMetric.eventIds.resize(static_cast<size_t>(profilingMetric.eventCount));
+            size_t eventIdsSize = sizeof(CUpti_EventID) * profilingMetric.eventIds.size();
+            checkCUDAError(cuptiMetricEnumEvents(metric.second, &eventIdsSize, profilingMetric.eventIds.data()), "cuptiMetricEnumEvents");
             profilingMetric.eventValues.resize(static_cast<size_t>(profilingMetric.eventCount));
+            profilingMetric.eventStatuses.resize(static_cast<size_t>(profilingMetric.eventCount), false);
             profilingMetrics.push_back(profilingMetric);
         }
     }
 
     void updateState()
     {
+        if (remainingKernelRuns == 0)
+        {
+            return;
+        }
+
+        ++currentSetIndex;
         for (auto& metric : profilingMetrics)
         {
-            metric.currentSet = &eventGroups->sets[totalKernelRuns - remainingKernelRuns - 1];
+            metric.currentSetIndex = currentSetIndex;
         }
         --remainingKernelRuns;
     }
@@ -72,17 +83,12 @@ public:
         return kernelDurationValid;
     }
 
-    CUpti_EventGroupSets* getEventGroups() const
-    {
-        return eventGroups;
-    }
-
-    size_t getRemainingKernelRuns() const
+    uint64_t getRemainingKernelRuns() const
     {
         return remainingKernelRuns;
     }
 
-    size_t getTotalKernelRuns() const
+    uint64_t getTotalKernelRuns() const
     {
         return totalKernelRuns;
     }
@@ -123,16 +129,20 @@ public:
 private:
     uint64_t kernelDuration;
     bool kernelDurationValid;
-    CUpti_EventGroupSets* eventGroups;
-    size_t remainingKernelRuns;
-    size_t totalKernelRuns;
+    uint64_t remainingKernelRuns;
+    uint64_t totalKernelRuns;
+    CUpti_EventGroupSets* eventGroupSets;
+    uint32_t currentSetIndex;
     std::vector<CUDAProfilingMetric> profilingMetrics;
 
     static KernelProfilingCounter getCounterFromMetric(CUDAProfilingMetric& metric, const uint64_t kernelDuration)
     {
-        if (metric.currentEventIndex != metric.eventCount)
+        for (const auto eventStatus : metric.eventStatuses)
         {
-            throw std::runtime_error("Internal CUDA CUPTI error : Invalid number of collected metric events");
+            if (!eventStatus)
+            {
+                throw std::runtime_error("Internal CUDA CUPTI error : Failed to collect some metric events for profiling counter calculation");
+            }
         }
 
         CUpti_MetricValue metricValue;

@@ -7,6 +7,7 @@
 #include <vulkan/vulkan.h>
 #include <compute_engine/vulkan/vulkan_physical_device.h>
 #include <compute_engine/vulkan/vulkan_utility.h>
+#include <utility/logger.h>
 
 namespace ktt
 {
@@ -43,8 +44,8 @@ public:
             nullptr,
             applicationName.c_str(),
             VK_MAKE_VERSION(1, 0, 0),
-            "",
-            VK_MAKE_VERSION(0, 0, 0),
+            "KTT",
+            VK_MAKE_VERSION(1, 0, 0),
             VK_API_VERSION_1_0
         };
 
@@ -147,7 +148,7 @@ private:
         {
             VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
             nullptr,
-            VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT,
+            VK_DEBUG_REPORT_WARNING_BIT_EXT | VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT | VK_DEBUG_REPORT_ERROR_BIT_EXT,
             debugCallback,
             nullptr
         };
@@ -161,7 +162,7 @@ private:
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT /* flags */, VkDebugReportObjectTypeEXT /* objectType */,
         uint64_t /* object */, size_t /* location */, int32_t /* code */, const char* /* layerPrefix */, const char* message, void* /* userData */)
     {
-        std::cerr << "Validation layer report: " << std::endl << message;
+        Logger::logError(std::string("Validation layer report: ") + message);
         return VK_FALSE;
     }
 

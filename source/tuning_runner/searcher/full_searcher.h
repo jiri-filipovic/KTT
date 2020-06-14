@@ -18,12 +18,13 @@ public:
         }
     }
 
-    void calculateNextConfiguration(const double) override
+    void calculateNextConfiguration(const bool, const KernelConfiguration&, const double, const KernelProfilingData&,
+        const std::map<KernelId, KernelProfilingData>&) override
     {
         index++;
     }
 
-    KernelConfiguration getCurrentConfiguration() const override
+    KernelConfiguration getNextConfiguration() const override
     {
         return configurations.at(index);
     }

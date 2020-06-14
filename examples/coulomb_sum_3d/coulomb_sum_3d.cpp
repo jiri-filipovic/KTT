@@ -5,6 +5,7 @@
 #include "tuner_api.h"
 
 #define USE_CUDA 0
+#define USE_PROFILING 0
 
 #if USE_CUDA == 0
     #if defined(_MSC_VER)
@@ -51,7 +52,11 @@ int main(int argc, char** argv)
 
     // Declare kernel parameters
     const int gridSize = 256;
+#if USE_PROFILING == 0
     const int atoms = 4000;
+#else
+    const int atoms = 400; /* faster execution of slowly profiled kernel */
+#endif
     const ktt::DimensionVector ndRangeDimensions(gridSize, gridSize, gridSize);
     const ktt::DimensionVector workGroupDimensions;
     const ktt::DimensionVector referenceWorkGroupDimensions(16, 16);
@@ -90,8 +95,13 @@ int main(int argc, char** argv)
     ktt::Tuner tuner(platformIndex, deviceIndex, ktt::ComputeAPI::CUDA);
     tuner.setGlobalSizeType(ktt::GlobalSizeType::OpenCL);
     tuner.setCompilerOptions("-use_fast_math");
+  #if USE_PROFILING == 1
+    printf("Executing with profiling switched ON.\n");
+    tuner.setKernelProfiling(true);
+  #endif
 #endif
-    tuner.setLoggingLevel(ktt::LoggingLevel::Debug);
+    tuner.setPrintingTimeUnit(ktt::TimeUnit::Microseconds);
+    //tuner.setLoggingLevel(ktt::LoggingLevel::Debug);
 
     ktt::KernelId kernelId = tuner.addKernelFromFile(kernelFile, "directCoulombSum", ndRangeDimensions, workGroupDimensions);
     ktt::KernelId referenceKernelId = tuner.addKernelFromFile(referenceKernelFile, "directCoulombSumReference", ndRangeDimensions,
@@ -136,8 +146,11 @@ int main(int argc, char** argv)
     tuner.setKernelArguments(kernelId, std::vector<ktt::ArgumentId>{aiId, aixId, aiyId, aizId, aiwId, aId, gsId, gridId});
     tuner.setKernelArguments(referenceKernelId, std::vector<ktt::ArgumentId>{aiId, aId, gsId, gridId});
 
+#if USE_PROFILING == 0
+    //TODO: this is temporal hack, there should be composition of zeroizing and coulomb kernel, otherwise, multiple profiling runs corrupt results
     tuner.setReferenceKernel(kernelId, referenceKernelId, std::vector<ktt::ParameterPair>{}, std::vector<ktt::ArgumentId>{gridId});
     tuner.setValidationMethod(ktt::ValidationMethod::SideBySideComparison, 0.01);
+#endif
 
     tuner.tuneKernel(kernelId);
     tuner.printResult(kernelId, std::cout, ktt::PrintFormat::Verbose);

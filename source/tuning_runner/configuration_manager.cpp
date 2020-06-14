@@ -8,6 +8,9 @@
 #include <tuning_runner/configuration_manager.h>
 #include <utility/ktt_utility.h>
 
+// This line added by Amin Nezarat
+#include <tuning_runner/searcher/DLNezarat_searcher.h>
+
 namespace ktt
 {
 
@@ -174,7 +177,7 @@ KernelConfiguration ConfigurationManager::getCurrentConfiguration(const Kernel& 
                 throw std::runtime_error(std::string("No configurations left to explore and no best configuration recorded for kernel with id: ")
                     + std::to_string(id));
             }
-            return std::get<0>(configurationPair->second);
+            return configurationPair->second.getConfiguration();
         }
         else
         {
@@ -186,7 +189,7 @@ KernelConfiguration ConfigurationManager::getCurrentConfiguration(const Kernel& 
         }
     }
 
-    return searcherPair->second->getCurrentConfiguration();
+    return searcherPair->second->getNextConfiguration();
 }
 
 KernelConfiguration ConfigurationManager::getCurrentConfiguration(const KernelComposition& composition)
@@ -233,7 +236,7 @@ KernelConfiguration ConfigurationManager::getCurrentConfiguration(const KernelCo
                 throw std::runtime_error(std::string("No configurations left to explore and no best configuration recorded for kernel with id: ")
                     + std::to_string(id));
             }
-            return std::get<0>(configurationPair->second);
+            return configurationPair->second.getConfiguration();
         }
         else
         {
@@ -245,7 +248,7 @@ KernelConfiguration ConfigurationManager::getCurrentConfiguration(const KernelCo
         }
     }
 
-    return searcherPair->second->getCurrentConfiguration();
+    return searcherPair->second->getNextConfiguration();
 }
 
 KernelConfiguration ConfigurationManager::getBestConfiguration(const Kernel& kernel)
@@ -256,7 +259,7 @@ KernelConfiguration ConfigurationManager::getBestConfiguration(const Kernel& ker
         return getCurrentConfiguration(kernel);
     }
 
-    return std::get<0>(configurationPair->second);
+    return configurationPair->second.getConfiguration();
 }
 
 KernelConfiguration ConfigurationManager::getBestConfiguration(const KernelComposition& composition)
@@ -267,7 +270,7 @@ KernelConfiguration ConfigurationManager::getBestConfiguration(const KernelCompo
         return getCurrentConfiguration(composition);
     }
 
-    return std::get<0>(configurationPair->second);
+    return configurationPair->second.getConfiguration();
 }
 
 ComputationResult ConfigurationManager::getBestComputationResult(const KernelId id) const
@@ -278,11 +281,19 @@ ComputationResult ConfigurationManager::getBestComputationResult(const KernelId 
         return ComputationResult("", std::vector<ParameterPair>{}, "Valid result does not exist");
     }
 
-    return ComputationResult(std::get<1>(configurationPair->second), std::get<0>(configurationPair->second).getParameterPairs(),
-        std::get<2>(configurationPair->second));
+    const KernelResult& result = configurationPair->second;
+
+    if (!result.getCompositionCompilationData().empty())
+    {
+        return ComputationResult(result.getKernelName(), result.getConfiguration().getParameterPairs(), result.getComputationDuration(),
+            result.getCompositionCompilationData(), result.getCompositionProfilingData());
+    }
+
+    return ComputationResult(result.getKernelName(), result.getConfiguration().getParameterPairs(), result.getComputationDuration(),
+        result.getCompilationData(), result.getProfilingData());
 }
 
-void ConfigurationManager::calculateNextConfiguration(const Kernel& kernel, const KernelConfiguration& previous, const uint64_t previousDuration)
+void ConfigurationManager::calculateNextConfiguration(const Kernel& kernel, const KernelResult& previousResult)
 {
     const size_t id = kernel.getId();
     auto searcherPair = searchers.find(id);
@@ -294,25 +305,24 @@ void ConfigurationManager::calculateNextConfiguration(const Kernel& kernel, cons
     auto configurationPair = bestConfigurations.find(id);
     if (configurationPair == bestConfigurations.end())
     {
-        bestConfigurations.insert(std::make_pair(id, std::make_tuple(previous, kernel.getName(), previousDuration)));
+        bestConfigurations.insert(std::make_pair(id, previousResult));
     }
-    else if (std::get<2>(configurationPair->second) > previousDuration)
+    else if (configurationPair->second.getComputationDuration() > previousResult.getComputationDuration())
     {
         bestConfigurations.erase(id);
-        bestConfigurations.insert(std::make_pair(id, std::make_tuple(previous, kernel.getName(), previousDuration)));
+        bestConfigurations.insert(std::make_pair(id, previousResult));
     }
 
     if (hasPackConfigurations(id))
     {
         ConfigurationStorage& storage = configurationStorages.find(id)->second;
-        storage.storeConfiguration(std::make_pair(previous, previousDuration));
+        storage.storeConfiguration(std::make_pair(previousResult.getConfiguration(), previousResult.getComputationDuration()));
     }
 
-    searcherPair->second->calculateNextConfiguration(static_cast<double>(previousDuration));
+    searcherPair->second->calculateNextConfiguration(previousResult);
 }
 
-void ConfigurationManager::calculateNextConfiguration(const KernelComposition& composition, const KernelConfiguration& previous,
-    const uint64_t previousDuration)
+void ConfigurationManager::calculateNextConfiguration(const KernelComposition& composition, const KernelResult& previousResult)
 {
     const size_t id = composition.getId();
     auto searcherPair = searchers.find(id);
@@ -325,21 +335,21 @@ void ConfigurationManager::calculateNextConfiguration(const KernelComposition& c
     auto configurationPair = bestConfigurations.find(id);
     if (configurationPair == bestConfigurations.end())
     {
-        bestConfigurations.insert(std::make_pair(id, std::make_tuple(previous, composition.getName(), previousDuration)));
+        bestConfigurations.insert(std::make_pair(id, previousResult));
     }
-    else if (std::get<2>(configurationPair->second) > previousDuration)
+    else if (configurationPair->second.getComputationDuration() > previousResult.getComputationDuration())
     {
         bestConfigurations.erase(id);
-        bestConfigurations.insert(std::make_pair(id, std::make_tuple(previous, composition.getName(), previousDuration)));
+        bestConfigurations.insert(std::make_pair(id, previousResult));
     }
 
     if (hasPackConfigurations(id))
     {
         ConfigurationStorage& storage = configurationStorages.find(id)->second;
-        storage.storeConfiguration(std::make_pair(previous, previousDuration));
+        storage.storeConfiguration(std::make_pair(previousResult.getConfiguration(), previousResult.getComputationDuration()));
     }
 
-    searcherPair->second->calculateNextConfiguration(static_cast<double>(previousDuration));
+    searcherPair->second->calculateNextConfiguration(previousResult);
 }
 
 void ConfigurationManager::initializeOrderedKernelPacks(const Kernel& kernel)
@@ -679,7 +689,7 @@ std::vector<ParameterPair> ConfigurationManager::getExtraParameterPairs(const Ke
     {
         for (const auto& bestPair : bestConfiguration.getParameterPairs())
         {
-            if (!elementExists(bestPair.getName(), addedParameters))
+            if (!containsElement(addedParameters, bestPair.getName()))
             {
                 result.push_back(bestPair);
                 addedParameters.push_back(bestPair.getName());
@@ -689,7 +699,7 @@ std::vector<ParameterPair> ConfigurationManager::getExtraParameterPairs(const Ke
 
     for (const auto& parameter : kernel.getParameters())
     {
-        if (!elementExists(parameter.getName(), addedParameters))
+        if (!containsElement(addedParameters, parameter.getName()))
         {
             result.push_back(ParameterPair(parameter.getName(), parameter.getValues().at(0)));
             addedParameters.push_back(parameter.getName());
@@ -712,7 +722,7 @@ std::vector<ParameterPair> ConfigurationManager::getExtraParameterPairs(const Ke
     {
         for (const auto& bestPair : bestConfiguration.getParameterPairs())
         {
-            if (!elementExists(bestPair.getName(), addedParameters))
+            if (!containsElement(addedParameters, bestPair.getName()))
             {
                 result.push_back(bestPair);
                 addedParameters.push_back(bestPair.getName());
@@ -722,7 +732,7 @@ std::vector<ParameterPair> ConfigurationManager::getExtraParameterPairs(const Ke
 
     for (const auto& parameter : composition.getParameters())
     {
-        if (!elementExists(parameter.getName(), addedParameters))
+        if (!containsElement(addedParameters, parameter.getName()))
         {
             result.push_back(ParameterPair(parameter.getName(), parameter.getValues().at(0)));
             addedParameters.push_back(parameter.getName());
@@ -795,6 +805,11 @@ void ConfigurationManager::initializeSearcher(const KernelId id, const SearchMet
     case SearchMethod::RandomSearch:
         searchers.insert(std::make_pair(id, std::make_unique<RandomSearcher>(configurations)));
         break;
+	//These lines added by Amin Nezarat
+	case SearchMethod::DLNezarat:
+		searchers.insert(std::make_pair(id, std::make_unique<DLNezaratSearcher>(configurations, arguments.at(0), arguments.at(1), arguments.at(2))));
+		break;
+	//====
     case SearchMethod::Annealing:
         searchers.insert(std::make_pair(id, std::make_unique<AnnealingSearcher>(configurations, arguments.at(0))));
         break;
@@ -863,6 +878,10 @@ std::string ConfigurationManager::getSearchMethodName(const SearchMethod method)
         return std::string("FullSearch");
     case SearchMethod::RandomSearch:
         return std::string("RandomSearch");
+	//These lines added by Amin Nezarat
+	case SearchMethod::DLNezarat:
+		return std::string("Machine Learning Predictor");
+	//====
     case SearchMethod::Annealing:
         return std::string("Annealing");
     case SearchMethod::MCMC:

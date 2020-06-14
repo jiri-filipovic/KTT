@@ -1,0 +1,17 @@
+For compiling(inside KTT root folder):
+
+$ ./premake5 gmake
+$ cd build
+$ make config=release_x86_64   or make config=debug_x86_64
+
+For runing executable file
+
+$ ./sort-new 6 1 20 1 /home/amin/mining/Expriment1/ 7 2
+
+Go to benchmark folder and then copy binary and library files (/home/amin/mining/FinalNezarat/benchmark)
+
+$ cp ../KTT-master/build/x86_64_Debug/sort-new . ;cp ../KTT-master/build/x86_64_Debug/libktt.so . ; mv sort-new benchmark
+
+To test the benchmark:
+
+$for problem in {1..13}; do ./benchmark $problem 1 1 1 confData/GPU-1070 7 2 ; done > log.log 2>&1 &

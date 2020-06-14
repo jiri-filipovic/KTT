@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <compute_engine/vulkan/vulkan_physical_device.h>
 #include <compute_engine/vulkan/vulkan_utility.h>
+#include <kernel_argument/kernel_argument.h>
 
 namespace ktt
 {
@@ -11,21 +12,45 @@ namespace ktt
 class VulkanBuffer
 {
 public:
-    VulkanBuffer() :
-        device(nullptr),
-        physicalDevice(nullptr),
-        buffer(nullptr),
-        bufferMemory(nullptr),
-        bufferSize(0),
-        usageFlags(VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
-    {}
-
-    explicit VulkanBuffer(VkDevice device, const VulkanPhysicalDevice& physicalDevice, const VkDeviceSize bufferSize,
-        const VkBufferUsageFlags usageFlags) :
+    explicit VulkanBuffer(const VulkanBuffer& source, VkDevice device, const VulkanPhysicalDevice& physicalDevice,
+        const VkBufferUsageFlags usageFlags, const VkDeviceSize bufferSize) :
+        kernelArgumentId(source.getKernelArgumentId()),
+        bufferSize(bufferSize),
+        elementSize(source.getElementSize()),
+        dataType(source.getDataType()),
+        memoryLocation(ArgumentMemoryLocation::Host),
+        accessType(source.getAccessType()),
         device(device),
         physicalDevice(&physicalDevice),
         bufferMemory(nullptr),
-        bufferSize(bufferSize),
+        usageFlags(usageFlags)
+    {
+        const VkBufferCreateInfo bufferCreateInfo =
+        {
+            VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            nullptr,
+            0,
+            bufferSize,
+            usageFlags,
+            VK_SHARING_MODE_EXCLUSIVE,
+            0,
+            nullptr
+        };
+
+        checkVulkanError(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer), "vkCreateBuffer");
+    }
+
+    explicit VulkanBuffer(KernelArgument& kernelArgument, VkDevice device, const VulkanPhysicalDevice& physicalDevice,
+        const VkBufferUsageFlags usageFlags) :
+        kernelArgumentId(kernelArgument.getId()),
+        bufferSize(static_cast<VkDeviceSize>(kernelArgument.getDataSizeInBytes())),
+        elementSize(kernelArgument.getElementSizeInBytes()),
+        dataType(kernelArgument.getDataType()),
+        memoryLocation(kernelArgument.getMemoryLocation()),
+        accessType(kernelArgument.getAccessType()),
+        device(device),
+        physicalDevice(&physicalDevice),
+        bufferMemory(nullptr),
         usageFlags(usageFlags)
     {
         const VkBufferCreateInfo bufferCreateInfo =
@@ -45,11 +70,8 @@ public:
 
     ~VulkanBuffer()
     {
-        if (buffer != nullptr)
-        {
-            vkDestroyBuffer(device, buffer, nullptr);
-        }
-        
+        vkDestroyBuffer(device, buffer, nullptr);
+
         if (bufferMemory != nullptr)
         {
             vkFreeMemory(device, bufferMemory, nullptr);
@@ -84,11 +106,19 @@ public:
     {
         void* data;
         checkVulkanError(vkMapMemory(device, bufferMemory, 0, dataSize, 0, &data), "vkMapMemory");
-        std::memcpy(data, source, dataSize);
+        std::memcpy(data, source, static_cast<size_t>(dataSize));
         vkUnmapMemory(device, bufferMemory);
     }
 
-    void recordUploadDataCommand(VkCommandBuffer commandBuffer, VkBuffer sourceBuffer, const VkDeviceSize dataSize)
+    void downloadData(void* target, const VkDeviceSize dataSize)
+    {
+        void* data;
+        checkVulkanError(vkMapMemory(device, bufferMemory, 0, dataSize, 0, &data), "vkMapMemory");
+        std::memcpy(target, data, static_cast<size_t>(dataSize));
+        vkUnmapMemory(device, bufferMemory);
+    }
+
+    void recordCopyDataCommand(VkCommandBuffer commandBuffer, VkBuffer sourceBuffer, const VkDeviceSize dataSize)
     {
         const VkCommandBufferBeginInfo commandBufferBeginInfo =
         {
@@ -135,6 +165,31 @@ public:
         return usageFlags;
     }
 
+    size_t getElementSize() const
+    {
+        return elementSize;
+    }
+
+    ArgumentId getKernelArgumentId() const
+    {
+        return kernelArgumentId;
+    }
+
+    ArgumentDataType getDataType() const
+    {
+        return dataType;
+    }
+
+    ArgumentMemoryLocation getMemoryLocation() const
+    {
+        return memoryLocation;
+    }
+
+    ArgumentAccessType getAccessType() const
+    {
+        return accessType;
+    }
+
 private:
     VkDevice device;
     const VulkanPhysicalDevice* physicalDevice;
@@ -142,6 +197,11 @@ private:
     VkDeviceMemory bufferMemory;
     VkDeviceSize bufferSize;
     VkBufferUsageFlags usageFlags;
+    size_t elementSize;
+    ArgumentId kernelArgumentId;
+    ArgumentDataType dataType;
+    ArgumentMemoryLocation memoryLocation;
+    ArgumentAccessType accessType;
 };
 
 } // namespace ktt
